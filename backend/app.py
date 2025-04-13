@@ -4,9 +4,10 @@ import datetime
 from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
-from flask_pymongo import PyMongo
+from pymongo import MongoClient
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+import time
 
 # Load environment variables
 load_dotenv()
@@ -17,38 +18,87 @@ CORS(app)  # Enable CORS for all routes
 
 # Configure app
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "your-secret-key")
-app.config["MONGO_URI"] = os.getenv("MONGO_URI").replace('<db_password>', 'password123')
-app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY", "jwt-secret-key")
 
 # Initialize extensions
-mongo = PyMongo(app)
-
-# Create the users collection if it doesn't exist
-with app.app_context():
-    try:
-        mongo.db.users
-    except:
-        print("Creating users collection...")
-        mongo.db.create_collection('users')
-
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
 
+# MongoDB Configuration - using direct PyMongo client instead of Flask-PyMongo
+mongo_uri = os.getenv("MONGO_URI")
+if not mongo_uri:
+    mongo_uri = "mongodb://localhost:27017/"
+    print(f"Warning: Using default MongoDB URI: {mongo_uri}")
+else:
+    print(f"Using configured MongoDB URI from environment: {mongo_uri}")
+
+# Initialize MongoDB with retry logic
+mongo_client = None
+db = None
+max_retries = 3
+
+for attempt in range(max_retries):
+    try:
+        print(f"Attempting to connect to MongoDB (attempt {attempt+1})...")
+        mongo_client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+        # Force a connection to verify it works
+        mongo_client.admin.command('ping')
+        db = mongo_client.career_counselor  # Use your database name here
+        print("MongoDB connection successful!")
+        break
+    except Exception as e:
+        print(f"MongoDB connection attempt {attempt+1} failed: {e}")
+        if attempt < max_retries - 1:
+            print(f"Retrying in 3 seconds...")
+            time.sleep(3)
+        else:
+            print("Failed to connect to MongoDB after multiple attempts")
+            mongo_client = None
+            db = None
+
+# Initialize database collections
+def init_db():
+    if mongo_client is not None:
+        try:
+            collection_names = mongo_client.career_counselor.list_collection_names()
+            if 'users' not in collection_names:
+                mongo_client.career_counselor.create_collection('users')
+                print("Users collection created successfully")
+            else:
+                print("Users collection already exists")
+        except Exception as e:
+            print(f"Database initialization error: {e}")
+    else:
+        print("Cannot initialize database - MongoDB connection not established")
+
+# Only initialize if mongo connection was successful
+if mongo_client is not None:
+    init_db()
+else:
+    print("Skipping database initialization due to connection failure")
+
 # Configure Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=GEMINI_API_KEY)
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    print("Warning: GEMINI_API_KEY not set. AI features will not function.")
 
-# Authentication routes
+# Authentication routes with improved error handling
 @app.route('/api/register', methods=['POST'])
 def register():
     try:
+        # Check if MongoDB is connected
+        if mongo_client is None:
+            return jsonify({"success": False, "error": "Database connection is not available"}), 500
+        
         data = request.json
         # Check if required fields are present
         if not all(k in data for k in ["username", "email", "password"]):
             return jsonify({"success": False, "error": "Missing required fields"}), 400
         
         # Check if user already exists
-        existing_user = mongo.db.users.find_one({"email": data["email"]})
+        existing_user = db.users.find_one({"email": data["email"]})
         if existing_user:
             return jsonify({"success": False, "error": "Email already registered"}), 400
         
@@ -64,7 +114,7 @@ def register():
         }
         
         # Insert user into database
-        mongo.db.users.insert_one(new_user)
+        db.users.insert_one(new_user)
         
         # Create access token
         access_token = create_access_token(identity=data["email"])
@@ -79,18 +129,23 @@ def register():
             }
         }), 201
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        print(f"Registration error: {e}")
+        return jsonify({"success": False, "error": f"Database error: {str(e)}"}), 500
 
 @app.route('/api/login', methods=['POST'])
 def login():
     try:
+        # Check if MongoDB is connected
+        if mongo_client is None:
+            return jsonify({"success": False, "error": "Database connection is not available"}), 500
+        
         data = request.json
         # Check if required fields are present
         if not all(k in data for k in ["email", "password"]):
             return jsonify({"success": False, "error": "Missing required fields"}), 400
         
         # Find user by email
-        user = mongo.db.users.find_one({"email": data["email"]})
+        user = db.users.find_one({"email": data["email"]})
         if not user:
             return jsonify({"success": False, "error": "Invalid email or password"}), 401
         
@@ -111,17 +166,22 @@ def login():
             }
         }), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        print(f"Login error: {e}")
+        return jsonify({"success": False, "error": f"Database error: {str(e)}"}), 500
 
 @app.route('/api/user', methods=['GET'])
 @jwt_required()
 def get_user():
     try:
+        # Check if MongoDB is connected
+        if mongo_client is None:
+            return jsonify({"success": False, "error": "Database connection is not available"}), 500
+        
         # Get user email from JWT
         current_user_email = get_jwt_identity()
         
         # Find user by email
-        user = mongo.db.users.find_one({"email": current_user_email})
+        user = db.users.find_one({"email": current_user_email})
         if not user:
             return jsonify({"success": False, "error": "User not found"}), 404
         
@@ -133,7 +193,8 @@ def get_user():
             }
         }), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        print(f"Get user error: {e}")
+        return jsonify({"success": False, "error": f"Database error: {str(e)}"}), 500
 
 # Sample career paths to start with - for API reference
 sample_careers = {
@@ -149,6 +210,9 @@ def get_career_recommendations(skills, interests, experience_level):
     Get career recommendations from Gemini based on user inputs
     """
     try:
+        if not GEMINI_API_KEY:
+            return "AI recommendations unavailable - API key not configured"
+            
         # Use the Gemini 2.0 Flash model
         model = genai.GenerativeModel('gemini-2.0-flash')
         
@@ -177,6 +241,9 @@ def get_learning_resources(career_path):
     Get learning resources for a specific career path
     """
     try:
+        if not GEMINI_API_KEY:
+            return "AI recommendations unavailable - API key not configured"
+            
         # Use the Gemini 2.0 Flash model
         model = genai.GenerativeModel('gemini-2.0-flash')
         
@@ -221,6 +288,7 @@ def api_assessment():
             "recommendations": recommendations
         })
     except Exception as e:
+        print(f"Assessment API error: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -241,6 +309,7 @@ def api_resources():
             "resources": resources
         })
     except Exception as e:
+        print(f"Resources API error: {e}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -252,6 +321,18 @@ def api_career_categories():
     return jsonify({
         "success": True,
         "categories": sample_careers
+    })
+
+# Health check endpoint to verify the app is running
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    db_status = "Connected" if mongo_client is not None else "Not connected"
+    mongo_uri_masked = "Set (hidden for security)" if os.getenv("MONGO_URI") else "Not set"
+    return jsonify({
+        "status": "ok",
+        "mongodb": db_status,
+        "mongo_uri": mongo_uri_masked,
+        "gemini_api": "Configured" if GEMINI_API_KEY else "Not configured"
     })
 
 if __name__ == '__main__':

@@ -210,7 +210,7 @@ export const Assessment: React.FC = () => {
                   ...formData,
                   preferences: { ...formData.preferences, salary: value }
                 })}
-                placeholder="e.g., $50,000 - $70,000"
+                placeholder="e.g., 500,000 - 700,000"
                 required
               />
             </FormStep>
