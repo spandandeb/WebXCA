@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}Career Recommendations - AI Career Counselor{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-xl shadow-lg p-8">
+        <div class="flex items-center justify-center mb-8">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-blue-600 mr-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+            <h1 class="text-3xl font-bold text-gray-900">Your Career Recommendations</h1>
+        </div>
+
+        <div class="mb-8 p-6 bg-blue-50 rounded-lg border border-blue-100">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Your Profile</h2>
+            <div class="grid md:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600">Skills:</p>
+                    <p class="font-medium">{{ user_data.skills }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Interests:</p>
+                    <p class="font-medium">{{ user_data.interests }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Experience Level:</p>
+                    <p class="font-medium capitalize">{{ user_data.experience_level }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Assessment Date:</p>
+                    <p class="font-medium">{{ user_data.assessment_date }}</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">AI-Generated Recommendations</h2>
+            <div class="prose max-w-none">
+                {{ recommendations|safe }}
+            </div>
+        </div>
+
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Explore Career Categories</h2>
+            <div class="grid md:grid-cols-2 gap-4">
+                {% for category, careers in sample_careers.items() %}
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <h3 class="text-lg font-semibold text-gray-900 capitalize mb-3">{{ category }}</h3>
+                    <ul class="space-y-2">
+                        {% for career in careers %}
+                        <li>
+                            <a href="/career_details/{{ career }}" class="text-blue-600 hover:underline">{{ career }}</a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="flex justify-between">
+            <a href="/assessment" class="px-6 py-2 bg-gray-300 text-gray-700 font-medium rounded-lg shadow-md hover:bg-gray-400 transition duration-150">
+                Start New Assessment
+            </a>
+            <a href="/" class="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 transition duration-150">
+                Back to Home
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

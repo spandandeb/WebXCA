@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ career }} - AI Career Counselor{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-xl shadow-lg p-8">
+        <div class="flex items-center mb-8">
+            <a href="javascript:history.back()" class="mr-4 text-blue-600 hover:text-blue-800">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+            </a>
+            <h1 class="text-3xl font-bold text-gray-900">{{ career }}</h1>
+        </div>
+
+        <div class="mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Learning Resources</h2>
+            <div class="prose max-w-none">
+                {{ resources|safe }}
+            </div>
+        </div>
+
+        <div class="mt-8">
+            <a href="/assessment" class="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg shadow-md hover:bg-blue-700 transition duration-150">
+                Take Career Assessment
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
