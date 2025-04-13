@@ -1,22 +1,139 @@
 from flask import Flask, request, jsonify
 import os
-from datetime import datetime
+import datetime
 from flask_cors import CORS
 from dotenv import load_dotenv
 import google.generativeai as genai
+from flask_pymongo import PyMongo
+from flask_bcrypt import Bcrypt
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 
 # Load environment variables
 load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
-
-app.secret_key = os.getenv("SECRET_KEY", "your-secret-key")
 CORS(app)  # Enable CORS for all routes
+
+# Configure app
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "your-secret-key")
+app.config["MONGO_URI"] = os.getenv("MONGO_URI").replace('<db_password>', 'password123')
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+
+# Initialize extensions
+mongo = PyMongo(app)
+
+# Create the users collection if it doesn't exist
+with app.app_context():
+    try:
+        mongo.db.users
+    except:
+        print("Creating users collection...")
+        mongo.db.create_collection('users')
+
+bcrypt = Bcrypt(app)
+jwt = JWTManager(app)
 
 # Configure Gemini API
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=GEMINI_API_KEY)
+
+# Authentication routes
+@app.route('/api/register', methods=['POST'])
+def register():
+    try:
+        data = request.json
+        # Check if required fields are present
+        if not all(k in data for k in ["username", "email", "password"]):
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        # Check if user already exists
+        existing_user = mongo.db.users.find_one({"email": data["email"]})
+        if existing_user:
+            return jsonify({"success": False, "error": "Email already registered"}), 400
+        
+        # Hash password
+        hashed_password = bcrypt.generate_password_hash(data["password"]).decode('utf-8')
+        
+        # Create new user
+        new_user = {
+            "username": data["username"],
+            "email": data["email"],
+            "password": hashed_password,
+            "created_at": datetime.datetime.utcnow()
+        }
+        
+        # Insert user into database
+        mongo.db.users.insert_one(new_user)
+        
+        # Create access token
+        access_token = create_access_token(identity=data["email"])
+        
+        return jsonify({
+            "success": True,
+            "message": "User registered successfully",
+            "token": access_token,
+            "user": {
+                "username": data["username"],
+                "email": data["email"]
+            }
+        }), 201
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    try:
+        data = request.json
+        # Check if required fields are present
+        if not all(k in data for k in ["email", "password"]):
+            return jsonify({"success": False, "error": "Missing required fields"}), 400
+        
+        # Find user by email
+        user = mongo.db.users.find_one({"email": data["email"]})
+        if not user:
+            return jsonify({"success": False, "error": "Invalid email or password"}), 401
+        
+        # Check password
+        if not bcrypt.check_password_hash(user["password"], data["password"]):
+            return jsonify({"success": False, "error": "Invalid email or password"}), 401
+        
+        # Create access token
+        access_token = create_access_token(identity=data["email"])
+        
+        return jsonify({
+            "success": True,
+            "message": "Login successful",
+            "token": access_token,
+            "user": {
+                "username": user["username"],
+                "email": user["email"]
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/user', methods=['GET'])
+@jwt_required()
+def get_user():
+    try:
+        # Get user email from JWT
+        current_user_email = get_jwt_identity()
+        
+        # Find user by email
+        user = mongo.db.users.find_one({"email": current_user_email})
+        if not user:
+            return jsonify({"success": False, "error": "User not found"}), 404
+        
+        return jsonify({
+            "success": True,
+            "user": {
+                "username": user["username"],
+                "email": user["email"]
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # Sample career paths to start with - for API reference
 sample_careers = {

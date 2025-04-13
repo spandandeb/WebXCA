@@ -14,12 +14,12 @@ interface SignupProps {
 }
 
 export const Signup: React.FC<SignupProps> = ({ onToggleForm }) => {
-  const { register, error, isLoading, clearError } = useAuth();
+  const { register: registerUser, error, isLoading, clearError } = useAuth();
   const { register: registerField, handleSubmit, formState: { errors }, watch } = useForm<SignupFormInputs>();
   
   const onSubmit = async (data: SignupFormInputs) => {
     clearError();
-    await register(data.username, data.email, data.password);
+    await registerUser(data.username, data.email, data.password);
   };
 
   return (
